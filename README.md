@@ -1,2 +1,2 @@
-# gmod_improved_network_library
+# Improved Network Library
  
