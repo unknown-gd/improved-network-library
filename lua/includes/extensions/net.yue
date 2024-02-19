@@ -1,0 +1,282 @@
+:EntIndex, :IsValid = FindMetaTable( "Entity" )
+:ReadBit, :ReadUInt, :WriteUInt = net
+istable = istable
+:lower = string
+Entity = Entity
+TypeID = TypeID
+NULL = NULL
+
+global TYPE_COLOR = 255
+
+-- Type writing
+typesToWrite = net.TypesToWrite
+unless istable( typesToWrite )
+	typesToWrite = {}
+	net.TypesToWrite = typesToWrite
+
+writeType = nil
+do
+
+	IsColor = IsColor
+	typeID = 0
+
+	writeType = ( value ) ->
+		if IsColor( value )
+			typeID = 255
+		else
+			typeID = TypeID( value )
+
+		WriteUInt( typeID, 8 )
+
+		func = typesToWrite[ typeID ]
+		if func == nil
+			return
+
+		return func( value )
+
+	net.WriteType = writeType
+
+-- Type reading
+typesToRead = net.TypesToRead
+unless istable( typesToRead )
+	typesToRead = {}
+	net.TypesToRead = typesToRead
+
+readType = nil
+do
+
+	TYPE_NIL = TYPE_NIL
+
+	readType = ( typeID ) ->
+		typeID = typeID or ReadUInt( 8 )
+		if typeID == TYPE_NIL
+			return nil
+
+		func = typesToRead[ typeID ]
+		if func == nil
+			return
+
+		return func!
+
+	net.ReadType = readType
+
+-- Really cool net.Start
+if SERVER
+
+	:NetworkStringToID, :AddNetworkString = util
+	header = 0
+
+	start = net.StartX
+	unless isfunction( start )
+		start = net.Start
+		net.StartX = start
+
+	net.Start = ( networkString ) ->
+		header = NetworkStringToID( networkString )
+		if header == 0
+			AddNetworkString( networkString )
+
+		start( networkString )
+
+receivers = net.Receivers
+unless istable( receivers )
+	receivers = {}
+	net.Receivers = receivers
+
+-- Network string callback registration
+do
+
+	isstring = isstring
+	:remove = table
+	length = 0
+
+	net.Receive = ( networkString, func, identifier ) ->
+		networkString = lower( networkString )
+
+		unless isstring( identifier )
+			identifier = "unknown"
+
+		functions = receivers[ networkString ]
+		unless istable( functions )
+			functions = {}
+			receivers[ networkString ] = functions
+
+		length = #functions
+		for index = 1, length
+			if functions[ index ].identifier == identifier
+				remove( functions, index )
+				length -= 1
+				break
+
+		functions[ length + 1 ] = { :identifier, :func }
+
+-- Network string callback performing
+do
+
+
+	:NetworkIDToString = util
+	:ReadHeader = net
+
+	net.Incoming = ( length, client ) ->
+		networkString = NetworkIDToString( ReadHeader! )
+		if networkString == nil
+			return
+
+		functions = receivers[ lower( networkString ) ]
+		if functions == nil
+			return
+
+		length -= 16
+		for data in *functions
+			data.func( length, client )
+
+-- String, number, matrix, vector, angle reading
+typesToRead[ TYPE_STRING ] = net.ReadString
+typesToRead[ TYPE_NUMBER ] = net.ReadDouble
+typesToRead[ TYPE_MATRIX ] = net.ReadMatrix
+typesToRead[ TYPE_VECTOR ] = net.ReadVector
+typesToRead[ TYPE_ANGLE ] = net.ReadAngle
+
+-- String, number, matrix, vector, angle writing
+typesToWrite[ TYPE_STRING ] = net.WriteString
+typesToWrite[ TYPE_NUMBER ] = net.WriteDouble
+typesToWrite[ TYPE_MATRIX ] = net.WriteMatrix
+typesToWrite[ TYPE_VECTOR ] = net.WriteVector
+typesToWrite[ TYPE_ANGLE ] = net.WriteAngle
+
+-- Boolean writing
+net.WriteBool = net.WriteBit
+typesToWrite[ TYPE_BOOL ] = net.WriteBit
+
+-- Boolean reading
+do
+
+	:ReadBit = net
+
+	readBool = ->
+		return ReadBit! == 1
+
+	net.ReadBool = readBool
+	typesToRead[ TYPE_BOOL ] = readBool
+
+do
+
+	MAX_EDICT_BITS = 14
+
+	-- Entity writing
+	writeEntity = ( entity ) ->
+		if entity and IsValid( entity )
+			WriteUInt( EntIndex( entity ), MAX_EDICT_BITS )
+			return
+
+		WriteUInt( 0, MAX_EDICT_BITS )
+		return
+
+	net.WriteEntity = writeEntity
+	typesToWrite[ TYPE_ENTITY ] = writeEntity
+
+	-- Entity reading
+	readEntity = ->
+		index = ReadUInt( MAX_EDICT_BITS )
+		if index == nil or index == 0
+			return NULL
+
+		return Entity( index )
+
+	net.ReadEntity = readEntity
+	typesToRead[ TYPE_ENTITY ] = readEntity
+
+-- Player writing
+net.WritePlayer = ( ply ) ->
+	if ply and IsValid( ply ) and ply\IsPlayer!
+		WriteUInt( EntIndex( ply ), 8 )
+		return
+
+	WriteUInt( 0, 8 )
+	return
+
+-- Player reading
+net.ReadPlayer = ->
+	index = ReadUInt( 8 )
+	if index == nil or index == 0
+		return NULL
+
+	return Entity( index )
+
+-- Color writing
+do
+
+	writeColor = ( color, writeAlpha ) ->
+		WriteUInt( color.r or 255, 8 )
+		WriteUInt( color.g or 255, 8 )
+		WriteUInt( color.b or 255, 8 )
+
+		if writeAlpha == false
+			return
+
+		WriteUInt( color.a or 255, 8 )
+		return
+
+	typesToWrite[ 255 ] = writeColor
+	net.WriteColor = writeColor
+
+-- Color reading
+do
+
+	Color = Color
+
+	readColor = ( readAlpha ) ->
+		if readAlpha == false
+			return Color( ReadUInt( 8 ), ReadUInt( 8 ), ReadUInt( 8 ), 255 )
+
+		return Color( ReadUInt( 8 ), ReadUInt( 8 ), ReadUInt( 8 ), ReadUInt( 8 ) )
+
+	typesToRead[ 255 ] = readColor
+	net.ReadColor = readColor
+
+-- Table writing
+do
+
+	pairs = pairs
+	length = 0
+
+	writeTable = ( tbl, isSequential ) ->
+		if isSequential
+			length = #tbl
+			WriteUInt( length, 32 )
+
+			for index = 1, length
+				writeType( tbl[ index ] )
+
+			return
+
+		for key, value in pairs( tbl )
+			writeType( key )
+			writeType( value )
+
+		WriteUInt( 0, 8 )
+
+	typesToWrite[ TYPE_TABLE ] = writeTable
+	net.WriteTable = writeTable
+
+-- Table reading
+do
+
+	readTable = ( isSequential ) ->
+		result = {}
+		if isSequential
+			for index = 1, ReadUInt( 32 )
+				result[ index ] = readType!
+
+			return result
+
+		::read::
+		key = readType!
+		if key == nil
+			return result
+
+		result[ key ] = readType!
+		goto read
+
+	typesToRead[ TYPE_TABLE ] = readTable
+	net.ReadTable = readTable
