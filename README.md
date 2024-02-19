@@ -2,6 +2,7 @@
 A faster and more performance version of the Garry's Mod `net` library with additional cool features.
 
 ### Basic Changes
+- GM:IncomingNetworkMessage( `string` networkString, `number` length, `Player/NULL` ply ) - if return here `false` then callbacks will not be called. **[SERVER/CLIENT]**
 - `net.Receive` - has an additional third optional argument `string` "identifier" used for multiple receive callbacks. **[SERVER/CLIENT]**
 - `net.Start` - automatically creates network strings on the server without using `util.AddNetworkString`. **[SERVER]**
 - `net.StartX` - default `net.Start`. **[SERVER]**

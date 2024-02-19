@@ -7,6 +7,11 @@ TypeID = TypeID
 NULL = NULL
 
 global TYPE_COLOR = 255
+require( "hook" )
+
+-- ULib support ( I really don't like this )
+if file.Exists( "ulib/shared/hook.lua", "LUA" )
+	include( "ulib/shared/hook.lua" )
 
 -- Type writing
 typesToWrite = net.TypesToWrite
@@ -113,13 +118,16 @@ do
 -- Network string callback performing
 do
 
-
 	:NetworkIDToString = util
 	:ReadHeader = net
+	:Run = hook
 
 	net.Incoming = ( length, client ) ->
 		networkString = NetworkIDToString( ReadHeader! )
 		if networkString == nil
+			return
+
+		if Run( "IncomingNetworkMessage", networkString, length, client or NULL ) == false
 			return
 
 		functions = receivers[ lower( networkString ) ]
